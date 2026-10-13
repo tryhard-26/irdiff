@@ -227,7 +227,8 @@ TEST(pipeline, declaration_changes_are_attributed) {
   std::string Err;
   CHECK_MSG(tracePasses(*L, C, DiffOptions(), "", Steps, R, Err), Err);
   CHECK_EQ(Steps.size(), 1u);
-  const Change *D = t::find(Steps[0].Diff, "declaration", "modified", "@strlen");
+  const Change *D =
+      t::find(Steps[0].Diff, "declaration", "modified", "@strlen");
   CHECK_MSG(D, t::dump(Steps[0].Diff));
   CHECK(!t::find(Steps[0].Diff, "module", "modified", "data layout"));
 }
@@ -256,9 +257,10 @@ TEST(pipeline, inlined_function_removal_is_attributed) {
 }
 
 TEST(pipeline, foreign_blockaddress_uses_whole_module_snapshots) {
-  auto L = parse("define void @g() {\nentry:\n  br label %bb\nbb:\n  ret void\n}\n"
-                 "define ptr @f(i32 %a) {\n  %x = add i32 %a, 0\n"
-                 "  ret ptr blockaddress(@g, %bb)\n}\n");
+  auto L =
+      parse("define void @g() {\nentry:\n  br label %bb\nbb:\n  ret void\n}\n"
+            "define ptr @f(i32 %a) {\n  %x = add i32 %a, 0\n"
+            "  ret ptr blockaddress(@g, %bb)\n}\n");
   PipelineConfig C;
   C.Passes = "function(instcombine)";
   C.UseTarget = false;
