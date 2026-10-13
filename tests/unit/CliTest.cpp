@@ -124,7 +124,7 @@ TEST(cli, json_is_deterministic) {
 
 TEST(cli, unified_and_side_by_side) {
   t::Run U = t::run({F("flags_a.ll"), F("flags_b.ll"), "--format=unified"});
-  CHECK(U.Out.find("--- a/") != std::string::npos);
+  CHECK(U.Out.find("--- " + F("flags_a.ll")) != std::string::npos);
   CHECK(U.Out.find("@@ define @inc @@") != std::string::npos);
   CHECK(U.Out.find("-  %r = add i32 %x, 1") != std::string::npos);
   CHECK(U.Out.find("+  %r = add nsw i32 %x, 1") != std::string::npos);

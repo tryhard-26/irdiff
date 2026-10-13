@@ -618,3 +618,31 @@ TEST(diff, large_function_is_handled) {
   CHECK_EQ(t::count(D, "instruction", "operands-changed"), 5u);
   CHECK_EQ(D.Funcs[0].Stats.Unchanged, 3996u);
 }
+
+TEST(diff, redundant_instruction_merged) {
+  std::string S = "define i32 @f(ptr %p)";
+  ModuleDiff D = t::diff(
+      fn("entry:\n  %x = load i32, ptr %p\n  %y = load i32, ptr %p\n"
+         "  %z = add i32 %x, %y\n  ret i32 %z",
+         S),
+      fn("entry:\n  %x = load i32, ptr %p\n  %z = add i32 %x, %x\n  ret i32 %z",
+         S));
+  const Change *C = t::find(D, "instruction", "merged");
+  CHECK_MSG(C, t::dump(D));
+  CHECK(C->Inferred);
+  CHECK(t::hasDetail(C, "1 of 1 use(s) now read the remaining"));
+}
+
+TEST(diff, duplicated_instruction_split) {
+  std::string S = "define i32 @f(i32 %a, i1 %c)";
+  ModuleDiff D = t::diff(
+      fn("entry:\n  %x = mul i32 %a, 3\n  br i1 %c, label %l, label %r\nl:\n"
+         "  ret i32 %x\nr:\n  ret i32 %x",
+         S),
+      fn("entry:\n  %x = mul i32 %a, 3\n  br i1 %c, label %l, label %r\nl:\n"
+         "  ret i32 %x\nr:\n  %x2 = mul i32 %a, 3\n  ret i32 %x2",
+         S));
+  const Change *C = t::find(D, "instruction", "split");
+  CHECK_MSG(C, t::dump(D));
+  CHECK(t::hasDetail(C, "duplicates %x = mul i32 %a, 3"));
+}
