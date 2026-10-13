@@ -55,7 +55,7 @@ tar xzf irdiff-$V-$P.tar.gz
 sudo install irdiff-$V-$P/bin/irdiff /usr/local/bin/
 ```
 
-Release binaries initialize the X86, AArch64, ARM, RISCV and WebAssembly
+Release binaries link LLVM 22 and initialize the X86, AArch64, ARM, RISCV and WebAssembly
 targets. Other triples still work; pass pipelines then use target-independent
 cost models and irdiff says so.
 
@@ -175,7 +175,7 @@ it.
 | | |
 |---|---|
 | Build against | LLVM 19, 20, 21, 22, 23 (tested in CI on each) |
-| Release binaries | built against the newest stable LLVM at release time |
+| Release binaries | one pinned LLVM version for all platforms (LLVM 22 for 1.0.x), recorded in each archive's `BUILDINFO` |
 | Reads | IR that the linked LLVM can read: the same or older LLVM versions |
 
 When an input cannot be parsed and its producer is newer than irdiff's LLVM,
