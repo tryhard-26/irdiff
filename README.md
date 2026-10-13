@@ -170,10 +170,17 @@ Optimization remarks are quoted as LLVM reported them. `investigate` and
 together with the evidence; they never state a cause.
 
 `passes` instruments the new pass manager. Before and after every pass it
-hashes the IR unit the pass ran on; when a pass changes it, the module is
-printed and diffed against the previous snapshot, so each change is attributed
-to exactly one pass execution. Remarks emitted during a pass are attached to
-it.
+hashes the IR unit the pass ran on. When a pass changes a function, only that
+function (with declarations of what it references) is copied and compared
+with its previous copy; module-level state is re-read only when a module pass
+changes globals. Each change is attributed to exactly one pass execution,
+including dead-function cleanup that pass-manager adaptors do between passes.
+Remarks emitted during a pass are attached to it.
+
+Measured on an Apple M-series laptop with a Release build: comparing two
+26 MB modules (49,000 instructions, full debug info) takes 1.2 seconds,
+mostly parsing; tracing `default<O2>` on a 3,240-function module (265,000
+pass executions, 10,900 of them changing the IR) takes 19 seconds.
 
 ## LLVM compatibility
 
@@ -200,8 +207,8 @@ falls more than four releases behind.
 - Identified struct types are compared by name and body.
 - Alias queries are limited to the first `--aa-limit` (48) loads and stores per
   function.
-- `passes` prints the whole module after each changing pass. On very large
-  modules, restrict it with `--function`.
+- `--save-snapshots` prints the whole module after each changing pass, which
+  is slow for very large modules; combine it with `--function`.
 - Log replay (`--from-log`) needs module-scoped dumps
   (`-print-module-scope`).
 

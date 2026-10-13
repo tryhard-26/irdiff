@@ -242,8 +242,17 @@ hint is a pointer for investigation, not a diagnosis.
    SCC functions, or module) plus module-level counts. The hash covers
    operands, flags, types, alignment, metadata attachments and call
    attributes.
-3. When a pass changed something, the module is printed and compared with the
-   previous snapshot, restricted to the functions that changed.
+3. Each defined function is copied into a scratch module (with declarations
+   of the globals it references) and kept as bitcode. When a pass changes a
+   function, a new copy is taken and compared with the previous one, so the
+   cost of a step is proportional to the changed function, not the module.
+   Debug records are not copied unless `--debug-info` is given.
+4. When a module-level pass changes globals, or a pass adds or deletes
+   functions or declarations, module-level state is re-read from a bitcode
+   snapshot of the whole module and compared.
+5. Pass managers and adaptors are watched too: when they change the module
+   between passes (for example deleting functions that became dead after
+   inlining), the step is attributed to the adaptor.
 
 The report lists every changing pass execution with a summary; `-v` prints
 the full changes, `-f unified` prints unified diffs, `-f json` includes every
@@ -370,7 +379,11 @@ irdiff analyze $F/loops.ll
 - `--debug-info` compares locations and variable records, not complete
   debug metadata graphs.
 - Alias queries are pairwise and capped by `--aa-limit`.
-- `passes` re-parses the module after each changing pass; on very large
-  modules restrict it with `--function`.
+- `passes --save-snapshots` prints the whole module after each changing pass;
+  on very large modules restrict it with `--function`.
+- If a function takes the address of a block in another function, `passes`
+  falls back to whole-module snapshots for the run and says so.
+- Attribute changes that LLVM discards when IR is written and read back (for
+  example extra attributes on intrinsic declarations) are not reported.
 - irdiff reads IR its linked LLVM version can read. Use an irdiff built
   against the producing LLVM, or a newer one, for new IR features.

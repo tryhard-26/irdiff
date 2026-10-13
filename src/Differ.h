@@ -7,6 +7,8 @@ namespace irdiff {
 
 struct DiffOptions : Options {
   bool Rows = false;
+  // module-level state and declarations only; skip definitions
+  bool ModuleOnly = false;
 };
 
 ModuleDiff diffModules(Loaded &A, Loaded &B, const DiffOptions &O);
