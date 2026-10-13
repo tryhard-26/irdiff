@@ -125,7 +125,10 @@ void printChange(Painter &P, const Change &C, const ReportOptions &R,
       (C.Cat == "instruction" || C.Cat == "metadata" || C.Cat == "debug" ||
        (C.Cat == "analysis" && C.Subject.rfind("immediate", 0) != 0)))
     OS << "in %" << C.Block << ": ";
+  if (C.Significance == Sig::Major)
+    P.bold();
   OS << C.Subject;
+  P.reset();
   bool TwoLine = !C.After.empty() && C.Before == C.Subject;
   if (!TwoLine && (!C.Before.empty() || !C.After.empty())) {
     std::string B = C.Before.empty() ? "(none)" : C.Before;

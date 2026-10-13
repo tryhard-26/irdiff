@@ -278,7 +278,8 @@ instruction counts), remarks, pipeline differences, hints, and a summary.
 Each change is one line `SYMBOL [category] subject`, optionally followed by
 `=> B text` and indented details. Symbols: `+` added, `-` removed, `~`
 modified, `>` moved/reordered, `*` merged/split, `=` renamed/equivalent,
-`!` reachability, `?` ambiguous, `.` observation.
+`!` reachability, `?` ambiguous, `.` observation. With colors enabled, major
+changes are printed in bold.
 
 **unified**: `--- A` / `+++ B` headers, then one `@@ define @f @@` hunk
 group per changed function in matched order. Moved and reordered
