@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: pipx run 'clang-format==22.*' --dry-run --Werror src/*.cpp src/*.h tests/unit/*.cpp tests/unit/*.h
+
+  linux:
+    name: linux / LLVM ${{ matrix.llvm }} / ${{ matrix.cc }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, llvm: 19, cc: gcc }
+          - { os: ubuntu-24.04, llvm: 20, cc: gcc }
+          - { os: ubuntu-24.04, llvm: 21, cc: clang }
+          - { os: ubuntu-24.04, llvm: 22, cc: gcc }
+          - { os: ubuntu-24.04, llvm: 23, cc: clang }
+          - { os: ubuntu-24.04-arm, llvm: 22, cc: gcc }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM ${{ matrix.llvm }}
+        run: .github/scripts/install-llvm.sh ${{ matrix.llvm }} noble
+      - name: Configure
+        run: |
+          if [ "${{ matrix.cc }}" = clang ]; then
+            export CC=clang-${{ matrix.llvm }} CXX=clang++-${{ matrix.llvm }}
+          fi
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DIRDIFF_WERROR=ON \
+            -DLLVM_DIR=/usr/lib/llvm-${{ matrix.llvm }}/lib/cmake/llvm
+      - run: cmake --build build
+      - run: ctest --test-dir build --output-on-failure
+      - run: ./build/irdiff --version
+
+  macos:
+    name: macos / Homebrew LLVM / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install ninja llvm
+      - run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DIRDIFF_WERROR=ON \
+            -DLLVM_DIR="$(brew --prefix llvm)/lib/cmake/llvm"
+      - run: cmake --build build
+      - run: ctest --test-dir build --output-on-failure
+      - run: ./build/irdiff --version
+
+  sanitizers:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: .github/scripts/install-llvm.sh 22 noble
+      - run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=clang-22 -DCMAKE_CXX_COMPILER=clang++-22 \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
+            -DLLVM_DIR=/usr/lib/llvm-22/lib/cmake/llvm
+      - run: cmake --build build
+      - run: ctest --test-dir build --output-on-failure
+        env:
+          ASAN_OPTIONS: detect_leaks=0:detect_container_overflow=0
+          UBSAN_OPTIONS: print_stacktrace=1
+
+  coverage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: .github/scripts/install-llvm.sh 22 noble
+      - name: Build instrumented
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DIRDIFF_COVERAGE=ON \
+            -DCMAKE_C_COMPILER=clang-22 -DCMAKE_CXX_COMPILER=clang++-22 \
+            -DLLVM_DIR=/usr/lib/llvm-22/lib/cmake/llvm
+          cmake --build build
+      - name: Test
+        run: LLVM_PROFILE_FILE="$PWD/prof/%p.profraw" ctest --test-dir build --output-on-failure
+      - name: Report
+        run: |
+          llvm-profdata-22 merge -sparse prof/*.profraw -o cov.profdata
+          ARGS="build/irdiff -object build/tests/irdiff-tests -instr-profile=cov.profdata -ignore-filename-regex=(tests/|/usr/)"
+          llvm-cov-22 report $ARGS | tee report.txt
+          llvm-cov-22 export -format=lcov $ARGS > coverage.lcov
+          llvm-cov-22 show -format=html -output-dir=coverage-html $ARGS
+          LINES=$(llvm-cov-22 export -summary-only $ARGS | jq '.data[0].totals.lines.percent')
+          { echo '### Coverage'; echo '```'; cat report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          echo "line coverage: $LINES%"
+          awk -v l="$LINES" 'BEGIN { exit !(l >= 85) }' || { echo "line coverage below 85%"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage.lcov
+            coverage-html
