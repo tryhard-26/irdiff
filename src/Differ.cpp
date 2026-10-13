@@ -1410,7 +1410,8 @@ ModuleDiff diffModules(Loaded &LA, Loaded &LB, const DiffOptions &O) {
     auto It = GM.AtoB.find(&F);
     Function *G = It == GM.AtoB.end() ? nullptr : cast<Function>(It->second);
     std::string NA = gname(CA, F), NB = G ? gname(CB, *G) : "";
-    if (!Wanted(NA, NB))
+    bool Decls = F.isDeclaration() && (!G || G->isDeclaration());
+    if (O.ModuleOnly ? !Decls : !Wanted(NA, NB))
       continue;
     bool Intr = F.isIntrinsic();
     if (F.isDeclaration() && (!G || G->isDeclaration())) {
@@ -1492,7 +1493,7 @@ ModuleDiff diffModules(Loaded &LA, Loaded &LB, const DiffOptions &O) {
     if (GM.BtoA.count(&G))
       continue;
     std::string NB = gname(CB, G);
-    if (!Wanted("", NB))
+    if (O.ModuleOnly ? !G.isDeclaration() : !Wanted("", NB))
       continue;
     if (G.isDeclaration()) {
       bool Intr = G.isIntrinsic();

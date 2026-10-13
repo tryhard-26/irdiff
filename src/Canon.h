@@ -42,6 +42,7 @@ struct FuncInfo {
   llvm::DenseMap<const llvm::BasicBlock *, unsigned> BlockIdx;
   llvm::DenseMap<const llvm::Instruction *, unsigned> InstIdx;
   std::vector<std::string> DebugVars;
+  std::vector<std::string> RawNames, RawBlockNames;
   uint64_t Hash = 0;
 
   int instOf(unsigned Id) const {
@@ -62,6 +63,7 @@ std::string stripRefs(llvm::StringRef Printed);
 class ModuleCanon {
 public:
   ModuleCanon(llvm::Module &M, const Options &O);
+  ~ModuleCanon();
   llvm::Module &M;
   const Options &Opts;
 

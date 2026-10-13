@@ -207,3 +207,82 @@ TEST(pipeline, replay_rejects_non_log) {
   CHECK(!traceLog(t::fixture("loops.ll"), DiffOptions(), Steps, Notes, Err));
   CHECK(Err.find("no '*** IR Dump'") != std::string::npos);
 }
+
+static std::unique_ptr<Loaded> parse(const std::string &Text) {
+  LoadResult R = loadModuleFromBuffer(Text, "t.ll", true);
+  if (!R.L)
+    t::fail(__FILE__, __LINE__, R.Error);
+  return std::move(R.L);
+}
+
+TEST(pipeline, declaration_changes_are_attributed) {
+  auto L = parse("target triple = \"x86_64-unknown-linux-gnu\"\n"
+                 "declare i64 @strlen(ptr)\n"
+                 "define i64 @f(ptr %s) {\n  %n = call i64 @strlen(ptr %s)\n"
+                 "  ret i64 %n\n}\n");
+  PipelineConfig C;
+  C.Passes = "inferattrs";
+  std::vector<PassStep> Steps;
+  PipelineResult R;
+  std::string Err;
+  CHECK_MSG(tracePasses(*L, C, DiffOptions(), "", Steps, R, Err), Err);
+  CHECK_EQ(Steps.size(), 1u);
+  const Change *D = t::find(Steps[0].Diff, "declaration", "modified", "@strlen");
+  CHECK_MSG(D, t::dump(Steps[0].Diff));
+  CHECK(!t::find(Steps[0].Diff, "module", "modified", "data layout"));
+}
+
+TEST(pipeline, inlined_function_removal_is_attributed) {
+  auto L = parse("define internal i32 @sq(i32 %x) {\n  %r = mul i32 %x, %x\n"
+                 "  ret i32 %r\n}\n"
+                 "define i32 @f(i32 %a) {\n  %v = call i32 @sq(i32 %a)\n"
+                 "  ret i32 %v\n}\n");
+  PipelineConfig C;
+  C.Passes = "cgscc(inline),globaldce";
+  C.UseTarget = false;
+  std::vector<PassStep> Steps;
+  PipelineResult R;
+  std::string Err;
+  CHECK_MSG(tracePasses(*L, C, DiffOptions(), "", Steps, R, Err), Err);
+  bool Inlined = false, Removed = false;
+  for (auto &S : Steps) {
+    if (t::find(S.Diff, "instruction", "removed", "call i32 @sq"))
+      Inlined = true;
+    if (t::find(S.Diff, "function", "removed", "@sq"))
+      Removed = true;
+  }
+  CHECK(Inlined);
+  CHECK(Removed);
+}
+
+TEST(pipeline, foreign_blockaddress_uses_whole_module_snapshots) {
+  auto L = parse("define void @g() {\nentry:\n  br label %bb\nbb:\n  ret void\n}\n"
+                 "define ptr @f(i32 %a) {\n  %x = add i32 %a, 0\n"
+                 "  ret ptr blockaddress(@g, %bb)\n}\n");
+  PipelineConfig C;
+  C.Passes = "function(instcombine)";
+  C.UseTarget = false;
+  std::vector<PassStep> Steps;
+  PipelineResult R;
+  std::string Err;
+  CHECK_MSG(tracePasses(*L, C, DiffOptions(), "", Steps, R, Err), Err);
+  bool Note = false;
+  for (auto &N : R.Notes)
+    Note |= N.find("whole-module snapshots") != std::string::npos;
+  CHECK(Note);
+  CHECK(!Steps.empty());
+}
+
+TEST(pipeline, debug_info_mode_snapshots) {
+  auto L = load("real/kernels.O0.ll");
+  PipelineConfig C;
+  C.Passes = "function(sroa)";
+  DiffOptions O;
+  O.CompareDebug = true;
+  O.Functions = {"classify"};
+  std::vector<PassStep> Steps;
+  PipelineResult R;
+  std::string Err;
+  CHECK_MSG(tracePasses(*L, C, O, "", Steps, R, Err), Err);
+  CHECK_EQ(Steps.size(), 1u);
+}

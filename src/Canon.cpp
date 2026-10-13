@@ -110,7 +110,31 @@ std::string stripRefs(StringRef S) {
 ModuleCanon::ModuleCanon(Module &M, const Options &O)
     : M(M), Opts(O), Orig(&M), Canon(&M) {}
 
+// restore original local names so inputs stay reusable
+ModuleCanon::~ModuleCanon() {
+  for (auto &[Fn, FI] : Funcs) {
+    Function &F = *FI->F;
+    unsigned Id = 0, B = 0;
+    for (Argument &A : F.args())
+      A.setName("");
+    for (BasicBlock &BB : F) {
+      BB.setName("");
+      for (Instruction &I : BB)
+        I.setName("");
+    }
+    for (Argument &A : F.args())
+      A.setName(FI->RawNames[Id++]);
+    for (BasicBlock &BB : F) {
+      BB.setName(FI->RawBlockNames[B++]);
+      for (Instruction &I : BB)
+        I.setName(FI->RawNames[Id++]);
+    }
+  }
+}
+
 FuncInfo &ModuleCanon::func(Function &F) {
+  if (F.isMaterializable())
+    consumeError(F.materialize());
   auto &P = Funcs[&F];
   if (!P) {
     P = std::make_unique<FuncInfo>();
@@ -243,6 +267,13 @@ void ModuleCanon::build(FuncInfo &FI) {
     BI.End = K;
   }
 
+  for (Argument &A : F.args())
+    FI.RawNames.push_back(A.getName().str());
+  for (BasicBlock &BB : F) {
+    FI.RawBlockNames.push_back(BB.getName().str());
+    for (Instruction &I : BB)
+      FI.RawNames.push_back(I.getName().str());
+  }
   for (Argument &A : F.args())
     A.setName("");
   for (BasicBlock &BB : F) {
