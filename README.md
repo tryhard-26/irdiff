@@ -234,7 +234,8 @@ packaged archive, publishes the release with `SHA256SUMS`, points
 from the tap on macOS. Builds set `SOURCE_DATE_EPOCH`, map source paths with
 `-ffile-prefix-map`, and pack archives with fixed ordering, ownership and
 timestamps. Each archive's `BUILDINFO` records the commit, runner image,
-compiler and LLVM version used.
+compiler and LLVM version used. Rebuilding the `v1.0.0` tag produced
+byte-identical archives for all four platforms.
 
 ## License
 
