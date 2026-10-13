@@ -1150,9 +1150,9 @@ static void moduleLevel(ModuleDiff &D, Ctx &X) {
     Add(mk("module", "modified", X.O.Strict ? Sig::Minor : Sig::Cosmetic, "",
            "", "source_filename", MA.getSourceFileName(),
            MB.getSourceFileName()));
-  if (MA.getModuleInlineAsm() != MB.getModuleInlineAsm())
+  if (moduleAsm(MA) != moduleAsm(MB))
     Add(mk("module", "modified", Sig::Major, "", "", "module asm",
-           MA.getModuleInlineAsm(), MB.getModuleInlineAsm()));
+           moduleAsm(MA), moduleAsm(MB)));
 
   auto Flags = [&](Module &M, ModuleCanon &C) {
     std::map<std::string, std::string> R;

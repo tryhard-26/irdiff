@@ -17,6 +17,17 @@ inline std::string tripleOf(const llvm::Module &M) {
 #endif
 }
 
+inline std::string moduleAsm(const llvm::Module &M) {
+#if LLVM_VERSION_MAJOR >= 23
+  std::string S;
+  for (const auto &F : M.getModuleInlineAsm())
+    S += F.Asm;
+  return S;
+#else
+  return M.getModuleInlineAsm();
+#endif
+}
+
 // cond of a conditional br, else null
 inline llvm::Value *branchCondition(llvm::Instruction *I) {
 #if LLVM_VERSION_MAJOR >= 23
