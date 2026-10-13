@@ -1,0 +1,229 @@
+.TH IRDIFF 1 "2026-10-13" "irdiff 1.0.0" "User Commands"
+.SH NAME
+irdiff \- compare LLVM IR and explain optimization changes
+.SH SYNOPSIS
+.B irdiff
+.RB [ diff ]
+.I A B
+.RI [ options ]
+.br
+.B irdiff passes
+.I input
+.RB [ \-p
+.IR pipeline " | " \-O N ]
+.RI [ options ]
+.br
+.B irdiff passes \-\-from\-log
+.I log
+.RI [ options ]
+.br
+.B irdiff pipelines
+.I input
+.B \-a
+.I pipeline
+.B \-b
+.I pipeline
+.RI [ options ]
+.br
+.B irdiff analyze
+.I input
+.RI [ options ]
+.br
+.B irdiff investigate
+.I A B
+.RI [ options ]
+.SH DESCRIPTION
+.B irdiff
+compares two LLVM IR snapshots (textual
+.I .ll
+or bitcode
+.IR .bc )
+and reports added, removed, modified, moved, merged and split blocks and
+instructions, control-flow and loop changes, and changes to signatures,
+attributes, linkage, globals, declarations and module properties.
+Value names, block labels, metadata and attribute-group numbering, block
+layout and other non-semantic differences are normalized away.
+.PP
+.B passes
+runs a pass pipeline with LLVM's new pass manager and attributes each change
+to the pass execution that made it, or replays an existing
+.B \-print\-after\-all
+or
+.B \-print\-changed
+log produced with
+.BR \-print\-module\-scope .
+.B pipelines
+runs two pipelines or target configurations and compares the results,
+optimization remarks and pass sequences.
+.B analyze
+prints dominator, loop, scalar-evolution, alias-analysis and MemorySSA facts.
+.B investigate
+is
+.B diff
+with analyses, remarks and evidence-backed hints.
+.PP
+An input of
+.B \-
+reads standard input.
+.SH OPTIONS
+.SS Output
+.TP
+.BR \-f ", " \-\-format =\fItext\fR|\fIunified\fR|\fIside\-by\-side\fR|\fIjson\fR
+Output format; default text.
+.TP
+.BI \-o " file"
+Write output to
+.IR file .
+.TP
+.BR \-v ", " \-\-verbose
+Show all details, significance labels and full listings.
+.TP
+.BR \-q ", " \-\-quiet
+Print nothing; set the exit status only.
+.TP
+.B \-\-summary
+Print summary statistics only.
+.TP
+.BR \-U ", " \-\-context =\fIN\fR
+Context lines for unified and side-by-side output (default 3).
+.TP
+.BI \-\-width= N
+Width of side-by-side output (default $COLUMNS or 160).
+.TP
+.BR \-\-names =\fIoriginal\fR|\fIcanonical\fR
+Show original value names, or normalized names shared by matched values.
+.TP
+.BR \-\-color [=\fIauto\fR|\fIalways\fR|\fInever\fR] ", " \-\-no\-color
+Colorize text output. auto honours NO_COLOR and TERM=dumb.
+.TP
+.BR \-\-fail\-on =\fIany\fR|\fIminor\fR|\fImajor\fR|\fInever\fR
+Which shown changes make the exit status 1 (default any).
+.TP
+.B \-\-hints
+List potentially relevant differences with their evidence.
+.SS Filtering
+.TP
+.BR \-F ", " \-\-function =\fIglob\fR
+Only functions matching
+.I glob
+(repeatable).
+.TP
+.BI \-\-block= glob
+Only changes in matching blocks.
+.TP
+.BI \-\-category= list
+Only these categories (see
+.BR \-\-list\-categories ).
+.TP
+.BI \-\-change= list
+Only these change kinds.
+.TP
+.BI \-\-pass= glob
+Only pass steps whose class or pipeline name matches.
+.TP
+.BI \-\-analysis= list
+Analyses to run and report: dom, loops, scev, aa, mssa.
+.TP
+.BR \-\-min\-significance =\fIcosmetic\fR|\fIminor\fR|\fImajor\fR
+Hide changes below this level (default minor).
+.B \-\-all
+equals cosmetic,
+.B \-\-major
+equals major.
+.TP
+.B \-\-list\-categories
+List categories, kinds and analyses.
+.SS Normalization
+.TP
+.B \-\-debug\-info
+Compare debug locations and variable records.
+.TP
+.B \-\-ignore\-metadata
+Ignore non-debug metadata attachments.
+.TP
+.B \-\-ignore\-attributes
+Ignore attribute differences.
+.TP
+.B \-\-strict
+Report layout and source_filename changes as minor.
+.SS Input and pipelines
+.TP
+.B \-\-no\-verify
+Do not run the IR verifier on inputs.
+.TP
+.B \-\-require\-compatible
+Exit 4 if target triples or data layouts differ.
+.TP
+.B \-\-analyses
+Also compare analysis results (diff).
+.TP
+.BI \-\-aa\-limit= N
+Loads and stores per function used for alias queries (default 48).
+.TP
+.BI \-\-remarks\-a= file ", " \-\-remarks\-b= file
+Optimization remarks (YAML or bitstream) for each side.
+.TP
+.BI \-p " pipeline"
+Pipeline in opt \-passes syntax (default default<O2>).
+.TP
+.BR \-O0 ", " \-O1 ", " \-O2 ", " \-O3 ", " \-Os ", " \-Oz
+Shorthand for \-p default<ON>.
+.TP
+.BI \-a " pipeline" ", " \-b " pipeline"
+Pipelines for the two sides of
+.BR pipelines .
+.TP
+.BI \-\-mcpu= cpu ", " \-\-mattr= features
+Target CPU and features;
+.B \-\-mcpu\-b
+and
+.B \-\-mattr\-b
+override side B of
+.BR pipelines .
+.TP
+.B \-\-no\-target
+Use target-independent cost models.
+.TP
+.B \-\-verify\-each\-pass
+Verify the IR after every pass.
+.TP
+.BI \-\-save\-snapshots= dir
+Write the module after every changing pass.
+.TP
+.BI \-\-from\-log= file
+Replay a module-scoped pass log.
+.SH EXIT STATUS
+.TP
+.B 0
+No differences shown.
+.TP
+.B 1
+Differences shown (see \-\-fail\-on).
+.TP
+.B 2
+Usage error.
+.TP
+.B 3
+Unreadable, malformed or invalid input.
+.TP
+.B 4
+Incompatible input, for example bitcode from a newer LLVM, or differing
+targets with \-\-require\-compatible.
+.TP
+.B 5
+Internal error or pipeline failure.
+.SH EXAMPLES
+.nf
+irdiff before.ll after.ll
+irdiff before.bc after.bc \-f unified \-U 5
+irdiff a.ll b.ll \-\-major \-\-fail\-on=major \-q
+irdiff passes x.ll \-O2 \-F hot \-\-pass='licm*'
+irdiff pipelines x.ll \-a 'default<O2>' \-b 'default<O3>'
+irdiff investigate o2.ll o3.ll \-\-remarks\-a o2.yaml \-\-remarks\-b o3.yaml
+.fi
+.SH SEE ALSO
+.BR opt (1),
+.BR clang (1),
+.BR llvm\-diff (1)
+.PP
+The full manual is docs/manual.md in the source distribution.

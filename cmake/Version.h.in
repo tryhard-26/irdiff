@@ -1,0 +1,3 @@
+#pragma once
+#define IRDIFF_VERSION "@PROJECT_VERSION@"
+#define IRDIFF_GIT "@irdiff_git@"
