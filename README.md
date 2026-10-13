@@ -55,20 +55,24 @@ tar xzf irdiff-$V-$P.tar.gz
 sudo install irdiff-$V-$P/bin/irdiff /usr/local/bin/
 ```
 
-Release binaries link LLVM 22 and initialize the X86, AArch64, ARM, RISCV and WebAssembly
-targets. Other triples still work; pass pipelines then use target-independent
-cost models and irdiff says so.
+Release binaries link LLVM 22 and initialize the X86, AArch64, ARM, RISCV
+and WebAssembly targets. Other triples still work; pass pipelines then use
+target-independent cost models and irdiff says so.
 
 ### From source
 
-Requirements: CMake 3.20+, a C++17 compiler, and LLVM 19-23 development files
-(`llvm-config --cmakedir` must point at `LLVMConfig.cmake`).
+Requirements: CMake 3.20+, a C++17 compiler, and LLVM 19-23 development
+files. `LLVM_DIR` is the directory holding `LLVMConfig.cmake`.
 
 ```sh
-# Debian/Ubuntu/Raspberry Pi OS: sudo apt install cmake ninja-build llvm-19-dev zlib1g-dev libzstd-dev
-# macOS: brew install cmake ninja llvm
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-      -DLLVM_DIR=$(llvm-config --cmakedir)
+# Debian/Ubuntu/Raspberry Pi OS
+sudo apt install cmake ninja-build llvm-19-dev zlib1g-dev libzstd-dev
+LLVM_DIR=$(llvm-config-19 --cmakedir)
+# macOS
+brew install cmake ninja llvm
+LLVM_DIR=$(brew --prefix llvm)/lib/cmake/llvm
+
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="$LLVM_DIR"
 cmake --build build
 ctest --test-dir build --output-on-failure
 cmake --install build            # bin/irdiff and the man page
@@ -204,7 +208,7 @@ falls more than four releases behind.
 ## Development
 
 ```sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLLVM_DIR=$(llvm-config --cmakedir)
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLLVM_DIR="$LLVM_DIR"
 cmake --build build && ctest --test-dir build --output-on-failure
 ```
 
@@ -213,6 +217,17 @@ class, malformed-input tests, CLI tests that check exit codes and output
 formats, and tests against real clang/opt output from LLVM 19 in
 `tests/fixtures/real/` (regenerate with `tests/fixtures/src/kernels.c`).
 CI also enforces `clang-format` and a line-coverage floor.
+
+## Releases
+
+Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`. It builds static
+binaries for the four platforms, runs the test suite on each, smoke-tests the
+packaged archive, publishes the release with `SHA256SUMS`, points
+`Formula/irdiff.rb` at the new tag and then installs and tests the formula
+from the tap on macOS. Builds set `SOURCE_DATE_EPOCH`, map source paths with
+`-ffile-prefix-map`, and pack archives with fixed ordering, ownership and
+timestamps. Each archive's `BUILDINFO` records the commit, runner image,
+compiler and LLVM version used.
 
 ## License
 
