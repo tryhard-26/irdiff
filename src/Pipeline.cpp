@@ -450,8 +450,7 @@ bool traceLog(const std::string &Path, const DiffOptions &O,
     Rest = Next;
     StringRef T = Line.trim();
     StringRef H = T;
-    if (H.consume_front("; "))
-      ;
+    H.consume_front("; ");
     if (H.starts_with("*** IR Dump") || H.starts_with("*** IR Pass")) {
       Seg S;
       H = H.drop_front(4);
