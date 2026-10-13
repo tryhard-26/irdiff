@@ -153,9 +153,10 @@ in [docs/manual.md](docs/manual.md) and `man irdiff`.
 6. **Explain.** Matched pairs are classified (opcode, operands, flags,
    predicate, type, alignment, call attributes, metadata). Commuted operands,
    mirrored compares, reordered phi incoming values and switch cases are
-   recognized as equivalent. CFG edges, terminators, reachability, loop
-   structure (LoopInfo), and function, global and module properties are
-   compared separately.
+   recognized as equivalent. Removed instructions that duplicated a surviving
+   one are reported as merged, added copies as duplicates. CFG edges,
+   terminators, reachability, loop structure (LoopInfo), and function,
+   global and module properties are compared separately.
 
 Anything derived from a heuristic rather than read directly from the IR is
 marked `[inferred]` (block merges and splits, content-based renames) or with a

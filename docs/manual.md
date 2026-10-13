@@ -117,6 +117,12 @@ per predecessor block). If exactly one detail class applies it becomes the
 kind (`flags-changed`, `operands-changed`, `type-changed`), otherwise
 `modified`.
 
+Instruction merges and duplicates: a removed instruction that computed the
+same expression as one that remains is reported as `merged` (with how many
+of its uses now read the survivor, the typical CSE/GVN result); an added
+instruction identical to an existing one is reported as `split` (a
+duplicate, for example from tail duplication). Both are `[inferred]`.
+
 Block changes: `added`/`removed`; `merged` when most non-terminator
 instructions of a removed block now live in one block of B; `split` for the
 reverse; `moved` when the layout order changed; `renamed` for label-only
@@ -265,7 +271,7 @@ Each change is one line `SYMBOL [category] subject`, optionally followed by
 modified, `>` moved/reordered, `*` merged/split, `=` renamed/equivalent,
 `!` reachability, `?` ambiguous, `.` observation.
 
-**unified**: `--- a/A` / `+++ b/B` headers, then one `@@ define @f @@` hunk
+**unified**: `--- A` / `+++ B` headers, then one `@@ define @f @@` hunk
 group per changed function in matched order. Moved and reordered
 instructions carry `; moved to %bb` comments. Module-level changes come
 first as an `@@ module @@` hunk.

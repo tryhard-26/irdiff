@@ -534,14 +534,54 @@ void FuncDiffer::classify(unsigned IA, unsigned IB, bool Moved) {
   add(C);
 }
 
+static std::string rhs(const std::string &S) {
+  size_t Eq = S.find(" = ");
+  return !S.empty() && S[0] == '%' && Eq != std::string::npos ? S.substr(Eq + 3)
+                                                              : S;
+}
+
 void FuncDiffer::instructions() {
+  std::map<std::string, unsigned> SameA, SameB;
+  for (unsigned I = 0; I < A.Insts.size(); ++I)
+    if (!A.Insts[I].Debug && A.Insts[I].Match >= 0 &&
+        !A.Insts[I].I->getType()->isVoidTy())
+      SameA.emplace(rhs(P.strictA(I)), I);
+  for (unsigned I = 0; I < B.Insts.size(); ++I)
+    if (!B.Insts[I].Debug && B.Insts[I].Match >= 0 &&
+        !B.Insts[I].I->getType()->isVoidTy())
+      SameB.emplace(rhs(P.strictB(I)), I);
   for (unsigned I = 0; I < A.Insts.size(); ++I) {
     InstInfo &AI = A.Insts[I];
     if (AI.Debug)
       continue;
     if (AI.Match < 0) {
       ++FD.Stats.Removed;
-      add(mk("instruction", "removed", Sig::Major, "", bA(AI.Block), tA(I)));
+      Change C =
+          mk("instruction", "removed", Sig::Major, "", bA(AI.Block), tA(I));
+      auto It = AI.I->getType()->isVoidTy() ? SameA.end()
+                                            : SameA.find(rhs(P.strictA(I)));
+      if (It != SameA.end()) {
+        unsigned Keep = It->second;
+        Instruction *KeepB = B.Insts[A.Insts[Keep].Match].I;
+        unsigned Users = 0, Redirected = 0;
+        for (const Use &U : AI.I->uses())
+          if (auto *UI = dyn_cast<Instruction>(U.getUser())) {
+            ++Users;
+            int M = A.Insts[A.InstIdx.lookup(UI)].Match;
+            Instruction *UB = M >= 0 ? B.Insts[M].I : nullptr;
+            Redirected += UB && U.getOperandNo() < UB->getNumOperands() &&
+                          UB->getOperand(U.getOperandNo()) == KeepB;
+          }
+        C.Kind = "merged";
+        C.Inferred = true;
+        C.Details.push_back("computed the same value as " + tA(Keep) +
+                            ", which remains");
+        if (Users)
+          C.Details.push_back(std::to_string(Redirected) + " of " +
+                              std::to_string(Users) +
+                              " use(s) now read the remaining instruction");
+      }
+      add(C);
       continue;
     }
     bool Moved = A.Blocks[AI.Block].Match != int(B.Insts[AI.Match].Block);
@@ -552,6 +592,15 @@ void FuncDiffer::instructions() {
       ++FD.Stats.Added;
       Change C = mk("instruction", "added", Sig::Major, "",
                     bB(B.Insts[I].Block), tB(I));
+      auto It = B.Insts[I].I->getType()->isVoidTy()
+                    ? SameB.end()
+                    : SameB.find(rhs(P.strictB(I)));
+      if (It != SameB.end()) {
+        C.Kind = "split";
+        C.Inferred = true;
+        C.Details.push_back("duplicates " + tB(It->second) + " in %" +
+                            bB(B.Insts[It->second].Block));
+      }
       add(C);
     }
   // reorder in matched blk pairs = matches outside LIS

@@ -347,9 +347,9 @@ void printUnified(Painter &P, const ModuleDiff &D, const Options &O,
                   const ReportOptions &R) {
   raw_ostream &OS = P.OS;
   P.col(raw_ostream::RED, true);
-  OS << "--- a/" << D.A.Path << "\n";
+  OS << "--- " << D.A.Path << "\n";
   P.col(raw_ostream::GREEN, true);
-  OS << "+++ b/" << D.B.Path << "\n";
+  OS << "+++ " << D.B.Path << "\n";
   P.reset();
   auto Emit = [&](StringRef Title, const std::vector<Row> &Rows) {
     for (auto [B, E] : hunks(Rows, R.Context)) {
