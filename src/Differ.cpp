@@ -757,18 +757,17 @@ void FuncDiffer::cfg() {
       add(C);
       continue;
     }
-    auto *BA = dyn_cast<BranchInst>(TA);
-    auto *BB = dyn_cast<BranchInst>(TB);
-    if (BA && BB && BA->isConditional() && BB->isConditional()) {
-      std::string CA = X.CA.operand(BA->getCondition());
-      std::string CB = X.CB.operand(BB->getCondition());
-      auto Succ = [&](bool SideB, BranchInst *Br, unsigned K) {
+    Value *CondA = branchCondition(TA), *CondB = branchCondition(TB);
+    if (CondA && CondB) {
+      std::string CA = X.CA.operand(CondA);
+      std::string CB = X.CB.operand(CondB);
+      auto Succ = [&](bool SideB, Instruction *Br, unsigned K) {
         return P.strictText(SideB,
                             (SideB ? X.CB : X.CA).operand(Br->getSuccessor(K)));
       };
-      bool Same0 = Succ(false, BA, 0) == Succ(true, BB, 0);
-      bool Swap = Succ(false, BA, 0) == Succ(true, BB, 1) &&
-                  Succ(false, BA, 1) == Succ(true, BB, 0);
+      bool Same0 = Succ(false, TA, 0) == Succ(true, TB, 0);
+      bool Swap = Succ(false, TA, 0) == Succ(true, TB, 1) &&
+                  Succ(false, TA, 1) == Succ(true, TB, 0);
       bool CondSame = P.strictText(false, CA) == P.strictText(true, CB);
       if (!CondSame || (!Same0 && Swap)) {
         Change C = mk("cfg", "modified", Sig::Major, "", bA(Xb),
@@ -777,15 +776,15 @@ void FuncDiffer::cfg() {
         if (!CondSame) {
           C.Details.push_back("condition: " + X.CA.display(A, CA) + " -> " +
                               X.CB.display(B, CB));
-          if (auto *DI = dyn_cast<Instruction>(BA->getCondition()))
+          if (auto *DI = dyn_cast<Instruction>(CondA))
             C.Details.push_back("A condition: " + tA(A.InstIdx.lookup(DI)));
-          if (auto *DI = dyn_cast<Instruction>(BB->getCondition()))
+          if (auto *DI = dyn_cast<Instruction>(CondB))
             C.Details.push_back("B condition: " + tB(B.InstIdx.lookup(DI)));
         }
         if (!Same0 && Swap) {
           C.Details.push_back("true/false successors swapped");
-          auto *CmpA = dyn_cast<CmpInst>(BA->getCondition());
-          auto *CmpB = dyn_cast<CmpInst>(BB->getCondition());
+          auto *CmpA = dyn_cast<CmpInst>(CondA);
+          auto *CmpB = dyn_cast<CmpInst>(CondB);
           if (CmpA && CmpB &&
               CmpA->getInversePredicate() == CmpB->getPredicate() &&
               A.Insts[A.InstIdx.lookup(CmpA)].Match ==

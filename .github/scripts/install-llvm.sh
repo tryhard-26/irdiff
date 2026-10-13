@@ -7,5 +7,5 @@ curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/truste
 echo "deb http://apt.llvm.org/$CODENAME/ llvm-toolchain-$CODENAME-$V main" | sudo tee /etc/apt/sources.list.d/llvm.list
 sudo apt-get update -q
 sudo apt-get install -y -q --no-install-recommends \
-  llvm-$V-dev llvm-$V clang-$V libzstd-dev zlib1g-dev ninja-build cmake
+  llvm-$V-dev llvm-$V clang-$V libclang-rt-$V-dev libzstd-dev zlib1g-dev ninja-build cmake
 sudo apt-get install -y -q --no-install-recommends libpolly-$V-dev || true

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "llvm/Config/llvm-config.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
@@ -14,6 +15,19 @@ inline std::string tripleOf(const llvm::Module &M) {
 #else
   return M.getTargetTriple();
 #endif
+}
+
+// cond of a conditional br, else null
+inline llvm::Value *branchCondition(llvm::Instruction *I) {
+#if LLVM_VERSION_MAJOR >= 23
+  if (auto *B = llvm::dyn_cast<llvm::CondBrInst>(I))
+    return B->getCondition();
+#else
+  if (auto *B = llvm::dyn_cast<llvm::BranchInst>(I))
+    if (B->isConditional())
+      return B->getCondition();
+#endif
+  return nullptr;
 }
 
 inline const llvm::Target *lookupTarget(const llvm::Triple &T,
