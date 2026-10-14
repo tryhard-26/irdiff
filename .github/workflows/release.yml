@@ -135,8 +135,8 @@ jobs:
           URL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz"
           SHA=$(curl -fsSL "$URL" | sha256sum | cut -d' ' -f1)
           sed -i -e "s|^  url \".*\"|  url \"$URL\"|" -e "s|^  sha256 \".*\"|  sha256 \"$SHA\"|" Formula/irdiff.rb
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "raz0rbill26"
+          git config user.email "das.adriteyo26@gmail.com"
           git commit -am "Formula: irdiff ${GITHUB_REF_NAME}" || exit 0
           git push origin main
 
