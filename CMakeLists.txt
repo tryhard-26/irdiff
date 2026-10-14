@@ -45,8 +45,14 @@ add_library(irdiff_core STATIC
   src/Input.cpp
   src/Canon.cpp
   src/Match.cpp
+  src/DiffUtil.cpp
+  src/FuncDiffer.cpp
+  src/FuncDifferCfg.cpp
   src/Differ.cpp
   src/Analyses.cpp
+  src/PassRunner.cpp
+  src/Trace.cpp
+  src/LogReplay.cpp
   src/Pipeline.cpp
   src/Report.cpp)
 target_include_directories(irdiff_core PUBLIC src ${CMAKE_BINARY_DIR}/gen)
@@ -104,7 +110,7 @@ if(IRDIFF_FULLY_STATIC AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_link_options(irdiff PRIVATE -static-libstdc++ -static-libgcc -Wl,--as-needed)
 endif()
 if(IRDIFF_STATIC_LLVM AND APPLE)
-  target_link_options(irdiff PRIVATE -Wl,-dead_strip_dylibs -Wl,-dead_strip)
+  target_link_options(irdiff_core INTERFACE -Wl,-dead_strip_dylibs -Wl,-dead_strip)
 endif()
 
 include(GNUInstallDirs)
