@@ -229,8 +229,9 @@ CI also enforces `clang-format` and a line-coverage floor.
 
 Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`. It builds static
 binaries for the four platforms, runs the test suite on each, smoke-tests the
-packaged archive, publishes the release with `SHA256SUMS`, points
-`Formula/irdiff.rb` at the new tag and then installs and tests the formula
+packaged archive, publishes the release with a source archive and
+`SHA256SUMS`, points `Formula/irdiff.rb` at that source archive (so its
+download count tracks Homebrew installs) and then installs and tests the formula
 from the tap on macOS. Builds set `SOURCE_DATE_EPOCH`, map source paths with
 `-ffile-prefix-map`, and pack archives with fixed ordering, ownership and
 timestamps. Each archive's `BUILDINFO` records the commit, runner image,

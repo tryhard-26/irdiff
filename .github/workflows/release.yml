@@ -91,12 +91,20 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    outputs:
+      src-sha: ${{ steps.src.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+      - name: Source archive
+        id: src
+        run: |
+          V=${GITHUB_REF_NAME#v}
+          git archive --prefix=irdiff-$V/ HEAD | gzip -n -9 > dist/irdiff-$V-src.tar.gz
+          echo "sha=$(sha256sum dist/irdiff-$V-src.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Checksums and notes
         run: |
           cd dist && sha256sum *.tar.gz > SHA256SUMS && cat SHA256SUMS && cd ..
@@ -130,10 +138,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - name: Point the formula at the new tag
+      - name: Point the formula at the new source archive
         run: |
-          URL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz"
-          SHA=$(curl -fsSL "$URL" | sha256sum | cut -d' ' -f1)
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/irdiff-${GITHUB_REF_NAME#v}-src.tar.gz"
+          SHA=${{ needs.publish.outputs.src-sha }}
           sed -i -e "s|^  url \".*\"|  url \"$URL\"|" -e "s|^  sha256 \".*\"|  sha256 \"$SHA\"|" Formula/irdiff.rb
           git config user.name "raz0rbill26"
           git config user.email "das.adriteyo26@gmail.com"
