@@ -80,7 +80,7 @@ jobs:
           set +e
           $BIN tests/fixtures/flags_a.ll tests/fixtures/flags_b.ll; test $? -eq 1 || exit 1
           $BIN passes tests/fixtures/real/kernels.O0.ll -O2 -F scale_restrict --pass=licm | grep -q "now outside" || exit 1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: ${{ steps.pkg.outputs.archive }}
