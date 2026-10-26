@@ -17,7 +17,7 @@ jobs:
   format:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: pipx run 'clang-format==22.*' --dry-run --Werror src/*.cpp src/*.h tests/unit/*.cpp tests/unit/*.h
 
   linux:
@@ -34,7 +34,7 @@ jobs:
           - { os: ubuntu-24.04, llvm: 23, cc: clang }
           - { os: ubuntu-24.04-arm, llvm: 22, cc: gcc }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install LLVM ${{ matrix.llvm }}
         run: .github/scripts/install-llvm.sh ${{ matrix.llvm }} noble
       - name: Configure
@@ -56,7 +56,7 @@ jobs:
       matrix:
         os: [macos-15, macos-15-intel]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: brew install ninja llvm
       - run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DIRDIFF_WERROR=ON \
@@ -68,7 +68,7 @@ jobs:
   sanitizers:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: .github/scripts/install-llvm.sh 22 noble
       - run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
@@ -85,7 +85,7 @@ jobs:
   coverage:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: .github/scripts/install-llvm.sh 22 noble
       - name: Build instrumented
         run: |
