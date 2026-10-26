@@ -97,9 +97,10 @@ Each reported change has:
 - **kind**: `added`, `removed`, `modified`, `opcode-changed`,
   `operands-changed`, `flags-changed`, `type-changed`, `metadata-changed`,
   `moved`, `reordered`, `commuted`, `merged`, `split`, `renamed`,
-  `unreachable`, `ambiguous`, `observation`.
+  `rewritten`, `unreachable`, `ambiguous`, `observation`.
 - **significance**:
   - `cosmetic`: no semantic effect (renames, layout moves, commuted operands,
+    constant GEPs rewritten to the same base, flags and byte offset,
     reordering of instructions without side effects or memory access,
     renumbered private globals).
   - `minor`: unlikely to change generated code, or not semantic by itself:
@@ -293,7 +294,7 @@ first as an `@@ module @@` hunk.
 
 ```json
 {
-  "tool": {"name": "irdiff", "version": "1.0.0", "llvm": "22.1.4", "schema": 1},
+  "tool": {"name": "irdiff", "version": "2.0.0", "llvm": "22.1.4", "schema": 1},
   "command": "diff",
   "inputs": {"a": {"path": "...", "format": "text", "producer": "", "triple": "...",
                    "data_layout": "...", "functions": 2, "declarations": 0,

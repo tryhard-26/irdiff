@@ -24,6 +24,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include <functional>
 #include <map>
 #include <mutex>
 #include <set>
@@ -122,10 +123,43 @@ static bool cloneFunction(const Function &F, bool KeepDebug, std::string &Out) {
       if (Seen.insert(C).second)
         Work.push_back(C);
   };
+  // MD that names globals (!callees, !associated) must be remapped
+  DenseMap<const MDNode *, bool> GlobalMD;
+  std::function<bool(const MDNode *)> RefsGlobal = [&](const MDNode *N) {
+    if (isa<DINode>(N) || isa<DILocation>(N))
+      return false;
+    if (!GlobalMD.try_emplace(N, false).second)
+      return GlobalMD.lookup(N);
+    bool R = false;
+    for (const MDOperand &Op : N->operands()) {
+      if (auto *VM = dyn_cast_or_null<ValueAsMetadata>(Op.get())) {
+        if (auto *C = dyn_cast<Constant>(VM->getValue());
+            C && !isa<ConstantData>(C)) {
+          Visit(C);
+          R = true;
+        }
+      } else if (auto *Sub = dyn_cast_or_null<MDNode>(Op.get())) {
+        R |= RefsGlobal(Sub);
+      }
+    }
+    GlobalMD[N] = R;
+    return R;
+  };
+  SmallVector<std::pair<unsigned, MDNode *>, 4> MDs;
   for (const BasicBlock &BB : F)
-    for (const Instruction &I : BB)
+    for (const Instruction &I : BB) {
       for (const Use &U : I.operands())
         Visit(U.get());
+      MDs.clear();
+      I.getAllMetadataOtherThanDebugLoc(MDs);
+      for (auto &KN : MDs)
+        RefsGlobal(KN.second);
+    }
+  MDs.clear();
+  F.getAllMetadata(MDs);
+  for (auto &[K, N] : MDs)
+    if (K != LLVMContext::MD_dbg)
+      RefsGlobal(N);
   if (F.hasPersonalityFn())
     Visit(F.getPersonalityFn());
   if (F.hasPrefixData())
@@ -180,6 +214,9 @@ static bool cloneFunction(const Function &F, bool KeepDebug, std::string &Out) {
         Tmp.eraseNamedMetadata(CU);
   } else {
     // clone() skips debug records; self-mapped metadata avoids graph walks
+    for (auto &[N, Refs] : GlobalMD)
+      if (Refs)
+        MapMetadata(N, VMap);
     NF->copyAttributesFrom(&F);
     if (F.hasPersonalityFn())
       NF->setPersonalityFn(MapValue(F.getPersonalityFn(), VMap));
@@ -187,11 +224,9 @@ static bool cloneFunction(const Function &F, bool KeepDebug, std::string &Out) {
       NF->setPrefixData(MapValue(F.getPrefixData(), VMap));
     if (F.hasPrologueData())
       NF->setPrologueData(MapValue(F.getPrologueData(), VMap));
-    SmallVector<std::pair<unsigned, MDNode *>, 4> MDs;
-    F.getAllMetadata(MDs);
     for (auto &[K, N] : MDs)
       if (K != LLVMContext::MD_dbg)
-        NF->addMetadata(K, *N);
+        NF->addMetadata(K, *MapMetadata(N, VMap, RF_NoModuleLevelChanges));
     for (const BasicBlock &BB : F)
       VMap[&BB] = BasicBlock::Create(F.getContext(), BB.getName(), NF);
     SmallVector<Instruction *, 64> New;
@@ -338,8 +373,11 @@ bool tracePasses(Loaded &L, const PipelineConfig &C, const DiffOptions &O,
         A = loadSnapshot(It->second, false, StepErr);
       if (Def)
         B = loadSnapshot(After, false, StepErr);
-      if ((It != Fns.end() && !A) || (Def && !B))
+      if ((It != Fns.end() && !A) || (Def && !B)) {
+        StepErr +=
+            " (@" + N + ", " + (A ? "after " : "before ") + Run.Pass + ")";
         return;
+      }
       Loaded None;
       None.Ctx = std::make_unique<LLVMContext>();
       None.M = std::make_unique<Module>("none", *None.Ctx);

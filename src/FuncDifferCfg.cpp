@@ -393,8 +393,9 @@ void FuncDiffer::rows() {
       for (; IB < PB; ++IB)
         if (Show(B.Insts[IB]))
           Push(Row::Add, "", Txt(true, IB), NoteB(IB));
-      std::string Why;
-      bool Same = P.strictA(PA) == P.strictB(PB) || equivalent(PA, PB, Why);
+      std::string Why, Kind;
+      bool Same =
+          P.strictA(PA) == P.strictB(PB) || equivalent(PA, PB, Why, Kind);
       Push(Same ? Row::Same : Row::Mod, Txt(false, PA), Txt(true, PB), Why);
       IA = PA + 1;
       IB = PB + 1;

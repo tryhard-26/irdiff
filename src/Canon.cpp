@@ -1,12 +1,14 @@
 #include "Canon.h"
 
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/IR/AssemblyAnnotationWriter.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DebugProgramInstruction.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
 
@@ -152,10 +154,10 @@ static std::string asOperand(const Value &V, ModuleSlotTracker &MST,
   return S;
 }
 
-std::string ModuleCanon::operand(const Value *V) {
+std::string ModuleCanon::operand(const Value *V, bool Ty) {
   if (!V)
     return "<null>";
-  return stripRefs(asOperand(*V, Canon, true));
+  return stripRefs(asOperand(*V, Canon, Ty));
 }
 
 std::string ModuleCanon::attrs(const AttributeSet &S) {
@@ -172,6 +174,9 @@ std::string ModuleCanon::attrs(const AttributeSet &S) {
 }
 
 std::string ModuleCanon::mdText(const Metadata *Root) {
+  auto [It, New] = MdCache.try_emplace(Root);
+  if (!New)
+    return It->second;
   std::string Out;
   raw_string_ostream OS(Out);
   SmallPtrSet<const MDNode *, 8> Stack;
@@ -232,8 +237,24 @@ std::string ModuleCanon::mdText(const Metadata *Root) {
     Stack.erase(N);
   };
   Go(Root);
+  MdCache[Root] = Out;
   return Out;
 }
+
+namespace {
+// per-inst text spans; one print per fn avoids per-inst AsmWriter setup
+struct Spans : AssemblyAnnotationWriter {
+  DenseMap<const Instruction *, std::pair<uint64_t, uint64_t>> At;
+  void emitInstructionAnnot(const Instruction *I,
+                            formatted_raw_ostream &OS) override {
+    At[I].first = OS.tell();
+  }
+  void printInfoComment(const Value &V, formatted_raw_ostream &OS) override {
+    if (auto *I = dyn_cast<Instruction>(&V))
+      At[I].second = OS.tell();
+  }
+};
+} // namespace
 
 void ModuleCanon::build(FuncInfo &FI) {
   Function &F = *FI.F;
@@ -295,13 +316,14 @@ void ModuleCanon::build(FuncInfo &FI) {
   SmallVector<StringRef, 32> Kinds;
   F.getContext().getMDKindNames(Kinds);
   Canon.incorporateFunction(F);
-  std::string Buf;
+  std::string Text;
+  raw_string_ostream TOS(Text);
+  Spans Sp;
+  F.print(TOS, &Sp);
   for (InstInfo &II : FI.Insts) {
     Instruction &I = *II.I;
-    Buf.clear();
-    raw_string_ostream OS(Buf);
-    I.print(OS, Canon);
-    II.Canon = stripRefs(Buf);
+    auto [Begin, End] = Sp.At.lookup(&I);
+    II.Canon = stripRefs(StringRef(Text).slice(Begin, End));
     if (auto *CB = dyn_cast<CallBase>(&I)) {
       if (Function *Callee = CB->getCalledFunction())
         if (Callee->getName().starts_with("llvm.dbg.")) {

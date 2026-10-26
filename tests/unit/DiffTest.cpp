@@ -646,3 +646,76 @@ TEST(diff, duplicated_instruction_split) {
   CHECK_MSG(C, t::dump(D));
   CHECK(t::hasDetail(C, "duplicates %x = mul i32 %a, 3"));
 }
+
+TEST(diff, constexpr_operand_flags_are_not_instruction_flags) {
+  auto M = [](const char *Inner, const char *Outer) {
+    return std::string("@g = global [8 x i8] zeroinitializer\n"
+                       "define ptr @f(i64 %i) {\n  %p = getelementptr ") +
+           Outer + "i8, ptr getelementptr " + Inner +
+           "(i8, ptr @g, i64 4), i64 %i\n  ret ptr %p\n}\n";
+  };
+  ModuleDiff D = t::diff(M("inbounds ", "inbounds "), M("", "inbounds "));
+  CHECK_MSG(!t::find(D, "instruction", "flags-changed"), t::dump(D));
+  CHECK(t::find(D, "instruction", "operands-changed"));
+  D = t::diff(M("inbounds ", ""), M("", "inbounds "));
+  const Change *C = t::find(D, "instruction", "", "getelementptr");
+  CHECK_MSG(t::hasDetail(C, "flags: +inbounds"), t::dump(D));
+}
+
+TEST(diff, instruction_flags_are_read_from_ir) {
+  auto M = [](const char *Body) {
+    return std::string("define void @f(i32 %a, float %x, ptr %p) {\n") + Body +
+           "\n  ret void\n}\n";
+  };
+  struct {
+    const char *A, *B, *Flags;
+  } Cases[] = {
+      {"%r = add i32 %a, 1", "%r = add nuw nsw i32 %a, 1", "+nsw +nuw"},
+      {"%r = fadd fast float %x, %x", "%r = fadd nnan float %x, %x",
+       "-fast +nnan"},
+      {"%r = fcmp olt float %x, 1.0", "%r = fcmp nnan olt float %x, 1.0",
+       "+nnan"},
+      {"%r = load i32, ptr %p", "%r = load volatile i32, ptr %p", "+volatile"},
+      {"%r = atomicrmw add ptr %p, i32 1 monotonic",
+       "%r = atomicrmw add ptr %p, i32 1 seq_cst", "-monotonic +seq_cst"},
+      {"%r = zext i32 %a to i64", "%r = zext nneg i32 %a to i64", "+nneg"},
+      {"%r = or i32 %a, 1", "%r = or disjoint i32 %a, 1", "+disjoint"},
+      {"call void @f(i32 %a, float %x, ptr %p)",
+       "tail call void @f(i32 %a, float %x, ptr %p)", "+tail"},
+  };
+  for (auto &K : Cases) {
+    ModuleDiff D = t::diff(M(K.A), M(K.B));
+    const Change *C = t::find(D, "instruction", "flags-changed");
+    CHECK_MSG(t::hasDetail(C, std::string("flags: ") + K.Flags), t::dump(D));
+  }
+}
+
+TEST(diff, struct_gep_rewritten_to_byte_offset_is_equivalent) {
+  std::string Hdr =
+      "%S = type { i32, i32, i64 }\n@g = global %S zeroinitializer\n";
+  auto M = [&](const char *Body) {
+    return Hdr + "define i64 @f(ptr %p) {\n" + Body + "\n}\n";
+  };
+  ModuleDiff D = t::diff(
+      M("  %a = load i64, ptr getelementptr inbounds (%S, ptr @g, i64 0, "
+        "i32 2)\n  %q = getelementptr inbounds %S, ptr %p, i64 0, i32 2\n"
+        "  %b = load i64, ptr %q\n  %r = add i64 %a, %b\n  ret i64 %r"),
+      M("  %a = load i64, ptr getelementptr inbounds (i8, ptr @g, i64 8)\n"
+        "  %q = getelementptr inbounds i8, ptr %p, i64 8\n"
+        "  %b = load i64, ptr %q\n  %r = add i64 %a, %b\n  ret i64 %r"));
+  CHECK_MSG(t::atLeast(D, Sig::Minor) == 0, t::dump(D));
+  CHECK_EQ(t::count(D, "instruction", "rewritten"), 2u);
+
+  ModuleDiff E =
+      t::diff(M("  %q = getelementptr inbounds %S, ptr %p, i64 0, i32 2\n"
+                "  %b = load i64, ptr %q\n  ret i64 %b"),
+              M("  %q = getelementptr inbounds i8, ptr %p, i64 4\n"
+                "  %b = load i64, ptr %q\n  ret i64 %b"));
+  CHECK_MSG(t::atLeast(E, Sig::Major) == 1, t::dump(E));
+  ModuleDiff F = t::diff(
+      M("  %a = load i64, ptr getelementptr inbounds (%S, ptr @g, i64 0, "
+        "i32 2)\n  ret i64 %a"),
+      M("  %a = load i64, ptr getelementptr (i8, ptr @g, i64 8)\n"
+        "  ret i64 %a"));
+  CHECK_MSG(!t::find(F, "instruction", "rewritten"), t::dump(F));
+}

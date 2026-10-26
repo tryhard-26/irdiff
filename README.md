@@ -47,7 +47,7 @@ self-contained archives (LLVM linked statically) for:
 | macOS 15+ x86_64 | `irdiff-<version>-macos-x86_64.tar.gz` |
 
 ```sh
-V=1.0.0; P=linux-x86_64
+V=2.0.0; P=linux-x86_64
 curl -LO https://github.com/tryhard-26/irdiff/releases/download/v$V/irdiff-$V-$P.tar.gz
 curl -LO https://github.com/tryhard-26/irdiff/releases/download/v$V/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS        # macOS: shasum -a 256 --ignore-missing -c SHA256SUMS
@@ -177,17 +177,19 @@ changes globals. Each change is attributed to exactly one pass execution,
 including dead-function cleanup that pass-manager adaptors do between passes.
 Remarks emitted during a pass are attached to it.
 
-Measured on an Apple M-series laptop with a Release build: comparing two
-26 MB modules (49,000 instructions, full debug info) takes 1.2 seconds,
-mostly parsing; tracing `default<O2>` on a 3,240-function module (265,000
-pass executions, 10,900 of them changing the IR) takes 19 seconds.
+Measured on an Apple M4 with a release binary, on SQLite 3.50 (one 15 MB
+module, about 1,570 functions at `-O2`): `-O2` against `-O3` takes 3.1
+seconds and 0.7 GB, `-O0` against `-O2` 4.3 seconds, and the same pair with
+full debug info (35 MB and 48 MB) 7.8 seconds. Tracing `default<O2>` over
+SQLite (244,000 pass executions, 34,000 of them changing the IR) takes
+about 3 minutes. Lua 5.4 `-O2` against `-O3` takes 0.8 seconds.
 
 ## LLVM compatibility
 
 | | |
 |---|---|
 | Build against | LLVM 19, 20, 21, 22, 23 (tested in CI on each) |
-| Release binaries | one pinned LLVM version for all platforms (LLVM 22 for 1.0.x), recorded in each archive's `BUILDINFO` |
+| Release binaries | one pinned LLVM version for all platforms (LLVM 22 for 2.0.x), recorded in each archive's `BUILDINFO` |
 | Reads | IR that the linked LLVM can read: the same or older LLVM versions |
 
 When an input cannot be parsed and its producer is newer than irdiff's LLVM,

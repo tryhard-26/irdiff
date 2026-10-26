@@ -69,7 +69,7 @@ public:
 
   FuncInfo &func(llvm::Function &F);
   std::string display(const FuncInfo &FI, llvm::StringRef Canon);
-  std::string operand(const llvm::Value *V);
+  std::string operand(const llvm::Value *V, bool Ty = true);
   std::string globalLine(const llvm::GlobalValue &G);
   std::string mdText(const llvm::Metadata *MD);
   std::string attrs(const llvm::AttributeSet &S);
@@ -78,6 +78,7 @@ public:
 private:
   llvm::ModuleSlotTracker Orig, Canon;
   llvm::DenseMap<const llvm::Function *, std::unique_ptr<FuncInfo>> Funcs;
+  llvm::DenseMap<const llvm::Metadata *, std::string> MdCache;
   void build(FuncInfo &FI);
 };
 

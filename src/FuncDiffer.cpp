@@ -6,6 +6,7 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
@@ -105,7 +106,33 @@ std::string FuncDiffer::canonText(bool SideB, unsigned I) {
   return stripFnAttrs(P.strictText(SideB, (SideB ? B : A).Insts[I].Canon));
 }
 
-bool FuncDiffer::equivalent(unsigned IA, unsigned IB, std::string &Why) {
+// base + const byte offset + GEP flags of a const-index GEP chain
+bool FuncDiffer::sameAddress(bool SideB, const Value *V, std::string &Key) {
+  if (!V->getType()->isPointerTy())
+    return false;
+  const DataLayout &DL = (SideB ? B : A).F->getParent()->getDataLayout();
+  APInt Off(DL.getIndexTypeSizeInBits(V->getType()), 0);
+  bool Any = false, InBounds = true, NUSW = true, NUW = true;
+  while (auto *G = dyn_cast<GEPOperator>(V)) {
+    if (!G->accumulateConstantOffset(DL, Off))
+      return false;
+    GEPNoWrapFlags NW = G->getNoWrapFlags();
+    InBounds &= NW.isInBounds();
+    NUSW &= NW.hasNoUnsignedSignedWrap();
+    NUW &= NW.hasNoUnsignedWrap();
+    V = G->getPointerOperand();
+    Any = true;
+  }
+  if (!Any)
+    return false;
+  Key = P.strictText(SideB, (SideB ? X.CB : X.CA).operand(V)) + " + " +
+        toString(Off, 10, true) + (InBounds ? " inbounds" : "") +
+        (NUSW ? " nusw" : "") + (NUW ? " nuw" : "");
+  return true;
+}
+
+bool FuncDiffer::equivalent(unsigned IA, unsigned IB, std::string &Why,
+                            std::string &Kind) {
   Instruction *IAp = A.Insts[IA].I, *IBp = B.Insts[IB].I;
   if (IAp->getOpcode() != IBp->getOpcode() ||
       P.strictText(false, A.Insts[IA].Md) !=
@@ -148,6 +175,39 @@ bool FuncDiffer::equivalent(unsigned IA, unsigned IB, std::string &Why) {
     Why = "switch case order differs";
     return CA == CB;
   }
+  std::string KA, KB;
+  if (isa<GetElementPtrInst>(IAp) &&
+      typeStr(IAp->getType()) == typeStr(IBp->getType()) &&
+      sameAddress(false, IAp, KA) && sameAddress(true, IBp, KB) && KA == KB) {
+    Kind = "rewritten";
+    Why = "same base, flags and constant byte offset in a different GEP form";
+    return true;
+  }
+  if (IAp->getNumOperands() == IBp->getNumOperands() &&
+      !isa<GetElementPtrInst>(IAp)) {
+    std::string SA = P.strictA(IA), SB = P.strictB(IB);
+    bool Any = false, Ok = SA != SB;
+    for (unsigned K = 0; Ok && K < IAp->getNumOperands(); ++K) {
+      Value *OA = IAp->getOperand(K), *OB = IBp->getOperand(K);
+      if (Op(false, OA) == Op(true, OB))
+        continue;
+      std::string TA = P.strictText(false, X.CA.operand(OA, false)),
+                  TB = P.strictText(true, X.CB.operand(OB, false));
+      size_t At = SA.find(TA);
+      Ok = isa<Constant>(OA) && isa<Constant>(OB) &&
+           sameAddress(false, OA, KA) && sameAddress(true, OB, KB) &&
+           KA == KB && At != std::string::npos;
+      if (Ok)
+        SA.replace(At, TA.size(), TB);
+      Any = true;
+    }
+    if (Ok && Any && SA == SB) {
+      Kind = "rewritten";
+      Why = "constant GEP operand rewritten to the same base, flags and byte "
+            "offset";
+      return true;
+    }
+  }
   if (IAp->getNumOperands() != 2 || IBp->getNumOperands() != 2)
     return false;
   std::string A0 = Op(false, IAp->getOperand(0)),
@@ -159,6 +219,7 @@ bool FuncDiffer::equivalent(unsigned IA, unsigned IB, std::string &Why) {
   if (IAp->isCommutative()) {
     if (IAp->getRawSubclassOptionalData() !=
             IBp->getRawSubclassOptionalData() ||
+        instFlags(*IAp) != instFlags(*IBp) ||
         typeStr(IAp->getType()) != typeStr(IBp->getType()))
       return false;
     Why = "commutative operands swapped";
@@ -167,7 +228,9 @@ bool FuncDiffer::equivalent(unsigned IA, unsigned IB, std::string &Why) {
   if (auto *CA = dyn_cast<CmpInst>(IAp)) {
     auto *CB = cast<CmpInst>(IBp);
     if (CA->getSwappedPredicate() != CB->getPredicate() ||
-        IAp->getRawSubclassOptionalData() != IBp->getRawSubclassOptionalData())
+        IAp->getRawSubclassOptionalData() !=
+            IBp->getRawSubclassOptionalData() ||
+        instFlags(*IAp) != instFlags(*IBp))
       return false;
     Why = "operands swapped with mirrored predicate";
     return true;
@@ -209,11 +272,11 @@ void FuncDiffer::classify(unsigned IA, unsigned IB, bool Moved) {
     }
     return;
   }
-  std::string Why;
-  if (!Moved && equivalent(IA, IB, Why)) {
+  std::string Why, Kind = "commuted";
+  if (!Moved && equivalent(IA, IB, Why, Kind)) {
     ++FD.Stats.Unchanged;
-    Change C = mk("instruction", "commuted", Sig::Cosmetic, "", Blk, tA(IA),
-                  tA(IA), tB(IB));
+    Change C =
+        mk("instruction", Kind, Sig::Cosmetic, "", Blk, tA(IA), tA(IA), tB(IB));
     C.Details.push_back(Why + " (semantically equivalent)");
     add(C);
     return;
@@ -255,7 +318,7 @@ void FuncDiffer::classify(unsigned IA, unsigned IB, bool Moved) {
                 .str());
         Kinds.push_back("modified");
       }
-    auto WA = words(CA), WB = words(CB);
+    auto WA = instFlags(*IAp), WB = instFlags(*IBp);
     if (WA != WB) {
       std::string F;
       for (auto &W : WA)

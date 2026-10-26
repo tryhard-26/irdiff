@@ -163,3 +163,29 @@ TEST(analysis, hints_from_ir_evidence) {
   addHints(F);
   CHECK_MSG(t::find(F, "hint", "", "Poison-generating flags"), t::dump(F));
 }
+
+TEST(analysis, hints_ignore_restrictive_attrs_and_cap_evidence) {
+  auto Fn = [](const char *Attrs) {
+    return std::string("define void @f() ") + Attrs + " {\n  ret void\n}\n";
+  };
+  ModuleDiff D = t::diff(Fn("noinline optnone"), Fn(""));
+  addHints(D);
+  CHECK_MSG(!t::find(D, "hint", "", "attributes were lost"), t::dump(D));
+  D = t::diff(Fn("nounwind"), Fn(""));
+  addHints(D);
+  CHECK_MSG(t::find(D, "hint", "", "attributes were lost"), t::dump(D));
+
+  Change Big;
+  Big.Cat = "metadata";
+  Big.Kind = "metadata-changed";
+  Big.Func = "f";
+  Big.Subject = "load";
+  Big.Details.push_back("metadata: !tbaa " + std::string(5000, 'x'));
+  ModuleDiff M;
+  M.ModuleChanges.push_back(Big);
+  addHints(M);
+  const Change *H = t::find(M, "hint", "", "TBAA");
+  CHECK(H);
+  for (auto &Dt : H->Details)
+    CHECK_MSG(Dt.size() <= 260, Dt.substr(0, 80));
+}

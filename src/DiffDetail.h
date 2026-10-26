@@ -17,7 +17,7 @@ std::string typeStr(llvm::Type *T);
 std::vector<std::string> attrTokens(llvm::StringRef S);
 std::vector<std::string> setDelta(llvm::StringRef A, llvm::StringRef B);
 std::vector<std::string> paramDelta(llvm::StringRef A, llvm::StringRef B);
-std::multiset<std::string> words(llvm::StringRef S);
+std::multiset<std::string> instFlags(const llvm::Instruction &I);
 std::string alignOf(llvm::StringRef S);
 std::string fnAttrsOf(llvm::StringRef S);
 std::string stripFnAttrs(llvm::StringRef S);
@@ -54,7 +54,9 @@ private:
   }
   void header();
   void instructions();
-  bool equivalent(unsigned IA, unsigned IB, std::string &Why);
+  bool equivalent(unsigned IA, unsigned IB, std::string &Why,
+                  std::string &Kind);
+  bool sameAddress(bool SideB, const llvm::Value *V, std::string &Key);
   void classify(unsigned IA, unsigned IB, bool Moved);
   void blocks();
   void cfg();

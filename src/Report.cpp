@@ -85,7 +85,7 @@ char sym(const Change &C) {
     return '>';
   if (K == "merged" || K == "split")
     return '*';
-  if (K == "renamed" || K == "commuted")
+  if (K == "renamed" || K == "commuted" || K == "rewritten")
     return '=';
   if (K == "unreachable")
     return '!';

@@ -28,8 +28,8 @@ const std::vector<std::string> AllKinds = {
     "opcode-changed", "operands-changed", "flags-changed",
     "type-changed",   "metadata-changed", "moved",
     "reordered",      "commuted",         "merged",
-    "split",          "renamed",          "unreachable",
-    "ambiguous",      "observation"};
+    "split",          "renamed",          "rewritten",
+    "unreachable",    "ambiguous",        "observation"};
 
 const std::vector<std::string> AllAnalyses = {"dom", "loops", "scev", "aa",
                                               "mssa"};

@@ -426,17 +426,40 @@ void FuncPair::run() {
 }
 
 // align leftovers of unmatched blks w/ blk holding most of them
+static std::vector<uint64_t> sorted(std::vector<uint64_t> V) {
+  llvm::sort(V);
+  return V;
+}
+
+// multiset intersection size of two sorted vecs
+static size_t common(const std::vector<uint64_t> &A,
+                     const std::vector<uint64_t> &B) {
+  size_t N = 0;
+  for (size_t I = 0, J = 0; I < A.size() && J < B.size();) {
+    if (A[I] < B[J])
+      ++I;
+    else if (B[J] < A[I])
+      ++J;
+    else
+      ++N, ++I, ++J;
+  }
+  return N;
+}
+
 void FuncPair::contentAlign() {
   for (int Side = 0; Side < 2; ++Side) {
     bool SB = Side == 1;
     FuncInfo &F = SB ? B : A, &O = SB ? A : B;
     std::vector<std::vector<unsigned>> Other(O.Blocks.size());
-    std::vector<std::vector<uint64_t>> OtherK(O.Blocks.size());
+    std::vector<std::vector<uint64_t>> OtherK(O.Blocks.size()),
+        OtherS(O.Blocks.size());
     for (unsigned I = 0; I < O.Insts.size(); ++I)
       if (O.Insts[I].Match < 0 && !O.Insts[I].Debug) {
         Other[O.Insts[I].Block].push_back(I);
         OtherK[O.Insts[I].Block].push_back(hashStr(key(!SB, I, true)));
       }
+    for (unsigned Y = 0; Y < O.Blocks.size(); ++Y)
+      OtherS[Y] = sorted(OtherK[Y]);
     for (unsigned X = 0; X < F.Blocks.size(); ++X) {
       if (F.Blocks[X].Match >= 0)
         continue;
@@ -451,8 +474,15 @@ void FuncPair::contentAlign() {
         continue;
       int Best = -1;
       Pairs BestP;
+      std::vector<uint64_t> MineS = sorted(MineK);
+      // LCS <= shared keys; skip blocks that cannot win or reach half
+      auto Useful = [&](size_t Cap) {
+        return Cap > BestP.size() && Cap * 2 >= Mine.size();
+      };
       for (unsigned Y = 0; Y < O.Blocks.size(); ++Y) {
-        if (Other[Y].empty())
+        if (Other[Y].empty() ||
+            !Useful(std::min(Mine.size(), Other[Y].size())) ||
+            !Useful(common(MineS, OtherS[Y])))
           continue;
         Pairs P = lcs(MineK, OtherK[Y], 400);
         if (P.size() > BestP.size()) {
@@ -477,6 +507,7 @@ void FuncPair::contentAlign() {
           KeepK.push_back(OtherK[Best][J]);
         }
       Other[Best] = std::move(Keep);
+      OtherS[Best] = sorted(KeepK);
       OtherK[Best] = std::move(KeepK);
     }
   }
@@ -491,6 +522,11 @@ void FuncPair::matchBlocks() {
     SA[I] = blockShapes(false, I);
   for (unsigned I = 0; I < BB.size(); ++I)
     SB[I] = blockShapes(true, I);
+  std::vector<std::vector<uint64_t>> SortA(BA.size()), SortB(BB.size());
+  for (unsigned I = 0; I < BA.size(); ++I)
+    SortA[I] = sorted(SA[I]);
+  for (unsigned I = 0; I < BB.size(); ++I)
+    SortB[I] = sorted(SB[I]);
   std::vector<std::pair<unsigned, unsigned>> Work;
   auto Link = [&](unsigned X, unsigned Y, float S, bool Amb) {
     BA[X].Match = Y;
@@ -621,6 +657,11 @@ void FuncPair::matchBlocks() {
       if (Prune && BA[X].BB->getTerminator()->getOpcode() !=
                        BB[Y].BB->getTerminator()->getOpcode())
         continue;
+      // sim <= 2*shared/(a+b); skip pairs that cannot reach 0.3
+      size_t Len = SA[X].size() + SB[Y].size();
+      if (BA[X].Hash != BB[Y].Hash && Len &&
+          2.0 * common(SortA[X], SortB[Y]) / Len < 0.3)
+        continue;
       double S = Sim(X, Y);
       if (S < 0.3)
         continue;
@@ -631,21 +672,25 @@ void FuncPair::matchBlocks() {
   std::stable_sort(
       Cands.begin(), Cands.end(),
       [](const Cand &L, const Cand &R) { return L.Score > R.Score; });
+  std::vector<std::vector<unsigned>> ByX(BA.size()), ByY(BB.size());
+  for (unsigned I = 0; I < Cands.size(); ++I) {
+    ByX[Cands[I].X].push_back(I);
+    ByY[Cands[I].Y].push_back(I);
+  }
   for (unsigned I = 0; I < Cands.size(); ++I) {
     const Cand &C = Cands[I];
     if (BA[C.X].Match >= 0 || BB[C.Y].Match >= 0)
       continue;
-    bool Amb = false;
-    for (unsigned J = 0; J < Cands.size(); ++J) {
-      const Cand &D = Cands[J];
-      if (J == I || D.Score < C.Score - 0.05f)
-        continue;
-      if ((D.X == C.X && BB[D.Y].Match < 0) ||
-          (D.Y == C.Y && BA[D.X].Match < 0)) {
-        Amb = true;
-        break;
-      }
-    }
+    auto Close = [&](unsigned J) {
+      return J != I && Cands[J].Score >= C.Score - 0.05f;
+    };
+    bool Amb = any_of(ByX[C.X],
+                      [&](unsigned J) {
+                        return Close(J) && BB[Cands[J].Y].Match < 0;
+                      }) ||
+               any_of(ByY[C.Y], [&](unsigned J) {
+                 return Close(J) && BA[Cands[J].X].Match < 0;
+               });
     Link(C.X, C.Y, C.Score, Amb);
   }
   Propagate();
@@ -764,15 +809,31 @@ bool FuncPair::defUse(bool Loose) {
   return Any;
 }
 
+static bool isFlag(StringRef W) {
+  static const StringSet<> Flags = {
+      "nsw",      "nuw",      "exact",    "disjoint", "nneg",     "samesign",
+      "inbounds", "nusw",     "fast",     "nnan",     "ninf",     "nsz",
+      "arcp",     "contract", "afn",      "reassoc",  "volatile", "atomic",
+      "weak",     "tail",     "musttail", "notail"};
+  return Flags.contains(W);
+}
+
 void FuncPair::positional() {
   auto OpKey = [](const InstInfo &I) {
     std::string S = I.I->getOpcodeName();
     StringRef C = I.Canon;
     size_t Eq = C.find(" = ");
     StringRef Rest = Eq == StringRef::npos ? C : C.substr(Eq + 3);
+    while (isFlag(Rest.split(' ').first))
+      Rest = Rest.split(' ').second;
     std::pair<StringRef, StringRef> Parts = Rest.split(' ');
-    if (Parts.first == S)
-      S += ' ' + Parts.second.split(' ').first.str();
+    if (Parts.first == S && S != "getelementptr") {
+      // opcode + type/predicate; flags never block positional pairing
+      StringRef Next = Parts.second;
+      while (isFlag(Next.split(' ').first))
+        Next = Next.split(' ').second;
+      S += ' ' + Next.split(' ').first.str();
+    }
     return hashStr(S);
   };
   for (unsigned X = 0; X < A.Blocks.size(); ++X) {

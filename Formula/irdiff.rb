@@ -1,8 +1,8 @@
 class Irdiff < Formula
   desc "Compare LLVM IR and explain optimization changes"
   homepage "https://github.com/tryhard-26/irdiff"
-  url "https://github.com/tryhard-26/irdiff/releases/download/v1.0.0/irdiff-1.0.0-src.tar.gz"
-  sha256 "ca6c71ae73a1249c6297661e032c4e73ab12a3a8d69d170ee283cafd8a49fae9"
+  url "https://github.com/tryhard-26/irdiff/releases/download/v2.0.0/irdiff-2.0.0-src.tar.gz"
+  sha256 "81dbfbd4ca76669021ffdc5eddc7c21c1b2c38d2a83bac9cdcb79ae41dbf8862"
   license "Apache-2.0"
   head "https://github.com/tryhard-26/irdiff.git", branch: "main"
 

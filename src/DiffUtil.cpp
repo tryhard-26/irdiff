@@ -5,6 +5,7 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
@@ -72,16 +73,6 @@ std::vector<std::string> setDelta(StringRef A, StringRef B) {
   return R;
 }
 
-const std::set<std::string> &flagWords() {
-  static const std::set<std::string> W = {
-      "nsw",      "nuw",      "exact",    "disjoint", "nneg",      "samesign",
-      "inbounds", "nusw",     "inrange",  "fast",     "nnan",      "ninf",
-      "nsz",      "arcp",     "contract", "afn",      "reassoc",   "volatile",
-      "tail",     "musttail", "notail",   "atomic",   "unordered", "monotonic",
-      "acquire",  "release",  "acq_rel",  "seq_cst",  "weak",      "syncscope"};
-  return W;
-}
-
 // per-param delta of "#i: attrs; ..." strs
 std::vector<std::string> paramDelta(StringRef A, StringRef B) {
   auto Split = [](StringRef S) {
@@ -107,14 +98,91 @@ std::vector<std::string> paramDelta(StringRef A, StringRef B) {
   return R;
 }
 
-std::multiset<std::string> words(StringRef S) {
+// flags as printed, read from the inst itself (not constexpr operands)
+std::multiset<std::string> instFlags(const Instruction &I) {
   std::multiset<std::string> R;
-  SmallVector<StringRef, 16> Parts;
-  S.split(Parts, ' ', -1, false);
-  for (StringRef P : Parts) {
-    P = P.trim(",()");
-    if (flagWords().count(P.str()))
-      R.insert(P.str());
+  auto Add = [&](bool On, StringRef W) {
+    if (On && !R.count(W.str()))
+      R.insert(W.str());
+  };
+  auto Scope = [&](SyncScope::ID ID) {
+    if (ID == SyncScope::System)
+      return;
+    SmallVector<StringRef, 8> Names;
+    I.getContext().getSyncScopeNames(Names);
+    R.insert("syncscope(\"" +
+             (ID < Names.size() ? Names[ID] : StringRef("?")).str() + "\")");
+  };
+  if (auto *O = dyn_cast<OverflowingBinaryOperator>(&I)) {
+    Add(O->hasNoUnsignedWrap(), "nuw");
+    Add(O->hasNoSignedWrap(), "nsw");
+  }
+  if (auto *T = dyn_cast<TruncInst>(&I)) {
+    Add(T->hasNoUnsignedWrap(), "nuw");
+    Add(T->hasNoSignedWrap(), "nsw");
+  }
+  if (auto *E = dyn_cast<PossiblyExactOperator>(&I))
+    Add(E->isExact(), "exact");
+  if (auto *D = dyn_cast<PossiblyDisjointInst>(&I))
+    Add(D->isDisjoint(), "disjoint");
+  if (auto *N = dyn_cast<PossiblyNonNegInst>(&I))
+    Add(N->hasNonNeg(), "nneg");
+#if LLVM_VERSION_MAJOR >= 20
+  if (auto *C = dyn_cast<ICmpInst>(&I))
+    Add(C->hasSameSign(), "samesign");
+#endif
+  if (auto *G = dyn_cast<GetElementPtrInst>(&I)) {
+    GEPNoWrapFlags NW = G->getNoWrapFlags();
+    Add(NW.isInBounds(), "inbounds");
+    Add(NW.hasNoUnsignedSignedWrap() && !NW.isInBounds(), "nusw");
+    Add(NW.hasNoUnsignedWrap(), "nuw");
+  }
+  if (isa<FPMathOperator>(&I)) {
+    FastMathFlags F = I.getFastMathFlags();
+    if (F.isFast()) {
+      Add(true, "fast");
+    } else {
+      Add(F.allowReassoc(), "reassoc");
+      Add(F.noNaNs(), "nnan");
+      Add(F.noInfs(), "ninf");
+      Add(F.noSignedZeros(), "nsz");
+      Add(F.allowReciprocal(), "arcp");
+      Add(F.allowContract(), "contract");
+      Add(F.approxFunc(), "afn");
+    }
+  }
+  if (auto *C = dyn_cast<CallInst>(&I)) {
+    Add(C->getTailCallKind() == CallInst::TCK_Tail, "tail");
+    Add(C->getTailCallKind() == CallInst::TCK_MustTail, "musttail");
+    Add(C->getTailCallKind() == CallInst::TCK_NoTail, "notail");
+  }
+  if (auto *L = dyn_cast<LoadInst>(&I)) {
+    Add(L->isVolatile(), "volatile");
+    if (L->isAtomic()) {
+      Add(true, "atomic");
+      R.insert(toIRString(L->getOrdering()));
+      Scope(L->getSyncScopeID());
+    }
+  } else if (auto *S = dyn_cast<StoreInst>(&I)) {
+    Add(S->isVolatile(), "volatile");
+    if (S->isAtomic()) {
+      Add(true, "atomic");
+      R.insert(toIRString(S->getOrdering()));
+      Scope(S->getSyncScopeID());
+    }
+  } else if (auto *A = dyn_cast<AtomicRMWInst>(&I)) {
+    Add(A->isVolatile(), "volatile");
+    R.insert(toIRString(A->getOrdering()));
+    Scope(A->getSyncScopeID());
+  } else if (auto *X = dyn_cast<AtomicCmpXchgInst>(&I)) {
+    Add(X->isVolatile(), "volatile");
+    Add(X->isWeak(), "weak");
+    R.insert(toIRString(X->getSuccessOrdering()));
+    R.insert(toIRString(X->getFailureOrdering()));
+    Scope(X->getSyncScopeID());
+  } else if (auto *F = dyn_cast<FenceInst>(&I)) {
+    R.insert(toIRString(F->getOrdering()));
+    Scope(F->getSyncScopeID());
   }
   return R;
 }

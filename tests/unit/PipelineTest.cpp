@@ -288,3 +288,26 @@ TEST(pipeline, debug_info_mode_snapshots) {
   CHECK_MSG(tracePasses(*L, C, O, "", Steps, R, Err), Err);
   CHECK_EQ(Steps.size(), 1u);
 }
+
+TEST(pipeline, metadata_referencing_functions_snapshots) {
+  const char *IR = "define internal void @a() {\n  ret void\n}\n"
+                   "define internal void @b() {\n  ret void\n}\n"
+                   "define void @f(i1 %c) {\n"
+                   "  %p = select i1 %c, ptr @a, ptr @b\n"
+                   "  call void %p()\n  ret void\n}\n";
+  for (bool Debug : {false, true}) {
+    auto L = parse(IR);
+    PipelineConfig C;
+    C.Passes = "called-value-propagation";
+    C.UseTarget = false;
+    DiffOptions O;
+    O.CompareDebug = Debug;
+    std::vector<PassStep> Steps;
+    PipelineResult R;
+    std::string Err;
+    CHECK_MSG(tracePasses(*L, C, O, "", Steps, R, Err), Err);
+    CHECK_EQ(Steps.size(), 1u);
+    const Change *M = t::find(Steps[0].Diff, "metadata", "", "callees");
+    CHECK_MSG(M, t::dump(Steps[0].Diff));
+  }
+}

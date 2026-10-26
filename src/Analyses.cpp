@@ -2,6 +2,7 @@
 #include "Differ.h"
 
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/MemorySSA.h"
@@ -600,6 +601,27 @@ void diffRemarks(const std::vector<Remark> &A, const std::vector<Remark> &B,
   }
 }
 
+// attrs whose loss can block opts; dropping noinline/optnone is not a loss
+static bool enablesOpts(StringRef Attr) {
+  static const StringSet<> Names = {
+      "nounwind",        "willreturn",
+      "nofree",          "nosync",
+      "norecurse",       "memory",
+      "readnone",        "readonly",
+      "writeonly",       "argmemonly",
+      "noalias",         "nonnull",
+      "noundef",         "nocapture",
+      "captures",        "speculatable",
+      "mustprogress",    "returned",
+      "dereferenceable", "dereferenceable_or_null",
+      "align",           "range",
+      "nocallback",      "nofpclass",
+      "initializes",     "noreturn",
+      "alwaysinline",    "inlinehint"};
+  size_t End = Attr.find_first_of("( =");
+  return Names.contains(Attr.substr(0, End));
+}
+
 void addHints(ModuleDiff &D) {
   struct Hint {
     std::string Title;
@@ -613,6 +635,8 @@ void addHints(ModuleDiff &D) {
     Hint &X = H[{Func, Id}];
     X.Title = Title;
     X.Why = Why;
+    if (Ev.size() > 240)
+      Ev = Ev.substr(0, 237) + "...";
     if (X.Evidence.size() < 8)
       X.Evidence.push_back(std::move(Ev));
     else if (X.Evidence.size() == 8)
@@ -666,7 +690,7 @@ void addHints(ModuleDiff &D) {
                Ev);
     if (C.Cat == "attribute")
       for (auto &Dt : C.Details)
-        if (!Dt.empty() && Dt[0] == '-')
+        if (!Dt.empty() && Dt[0] == '-' && enablesOpts(Dt.substr(1)))
           Note(C.Func, "attrs-lost", "Function attributes were lost in B",
                "Attributes such as nounwind, willreturn, memory(...), "
                "noalias or nofree enable call-related optimizations.",
