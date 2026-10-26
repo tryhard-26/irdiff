@@ -1,0 +1,92 @@
+--- !Passed
+Pass:            inline
+Name:            Inlined
+DebugLoc:        { File: kernels.c, Line: 6, Column: 10 }
+Function:        sum_squares
+Args:
+  - String:          ''''
+  - Callee:          square
+  - String:          ''' inlined into '''
+  - Caller:          sum_squares
+    DebugLoc:        { File: kernels.c, Line: 3, Column: 0 }
+  - String:          ''''
+  - String:          ' with '
+  - String:          '(cost='
+  - Cost:            '-15030'
+  - String:          ', threshold='
+  - Threshold:       '337'
+  - String:          ')'
+  - String:          ' at callsite '
+  - String:          sum_squares
+  - String:          ':'
+  - Line:            '3'
+  - String:          ':'
+  - Column:          '10'
+  - String:          ';'
+...
+--- !Missed
+Pass:            licm
+Name:            LoadWithLoopInvariantAddressInvalidated
+DebugLoc:        { File: kernels.c, Line: 12, Column: 23 }
+Function:        scale
+Args:
+  - String:          failed to move load with loop-invariant address because the loop may invalidate its value
+...
+--- !Missed
+Pass:            licm
+Name:            LoadWithLoopInvariantAddressInvalidated
+DebugLoc:        { File: kernels.c, Line: 12, Column: 23 }
+Function:        scale
+Args:
+  - String:          failed to move load with loop-invariant address because the loop may invalidate its value
+...
+--- !Missed
+Pass:            licm
+Name:            LoadWithLoopInvariantAddressCondExecuted
+DebugLoc:        { File: kernels.c, Line: 18, Column: 23 }
+Function:        scale_restrict
+Args:
+  - String:          failed to hoist load with loop-invariant address because load is conditionally executed
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: kernels.c, Line: 18, Column: 23 }
+Function:        scale_restrict
+Args:
+  - String:          'hoisting '
+  - Inst:            load
+    DebugLoc:        { File: kernels.c, Line: 18, Column: 23 }
+...
+--- !Missed
+Pass:            loop-vectorize
+Name:            MissedDetails
+DebugLoc:        { File: kernels.c, Line: 5, Column: 3 }
+Function:        sum_squares
+Args:
+  - String:          loop not vectorized
+...
+--- !Missed
+Pass:            loop-vectorize
+Name:            MissedDetails
+DebugLoc:        { File: kernels.c, Line: 11, Column: 3 }
+Function:        scale
+Args:
+  - String:          loop not vectorized
+...
+--- !Missed
+Pass:            licm
+Name:            LoadWithLoopInvariantAddressInvalidated
+DebugLoc:        { File: kernels.c, Line: 12, Column: 23 }
+Function:        scale
+Args:
+  - String:          failed to move load with loop-invariant address because the loop may invalidate its value
+...
+--- !Missed
+Pass:            loop-vectorize
+Name:            MissedDetails
+DebugLoc:        { File: kernels.c, Line: 17, Column: 3 }
+Function:        scale_restrict
+Args:
+  - String:          loop not vectorized
+...
