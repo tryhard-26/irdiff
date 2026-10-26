@@ -95,7 +95,7 @@ jobs:
       src-sha: ${{ steps.src.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
